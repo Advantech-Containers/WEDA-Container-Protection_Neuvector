@@ -1,0 +1,26 @@
+services:
+  nv:
+    image: harbor.edgesync.cloud/neuvector-edge/allinone:v5.4.8.edge.v1.1.2.32309
+    hostname: nv
+    pid: host
+    privileged: true
+    environment:
+      - CLUSTER_JOIN_ADDR=nv
+      - CUSTOM_CHECK_CONTROL=strict
+      - NV_PLATFORM_INFO=platform=Docker
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc:/host/proc:ro
+      - /sys/fs/cgroup:/host/cgroup:ro
+      - /var/neuvector:/var/neuvector
+    ports:
+      - "8443:8443"
+      - "10443:10443"
+    networks:
+      dmagent_net:
+        ipv4_address: 10.10.0.60
+
+networks:
+  dmagent_net:
+    name: digitaltwin_device_mgmt_agent_weda_network
+    external: true

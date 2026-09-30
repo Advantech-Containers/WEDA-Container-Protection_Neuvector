@@ -1,0 +1,68 @@
+{
+  "_note": "This IS the file the script reads — the '_note'/'_note_*' keys below are NOT real NeuVector fields; they're plain JSON's usual workaround for comments (JSON itself has no comment syntax). run_neuvector.py only reads the specific keys it knows about (policy_mode, profile_mode, file_monitor_rules, network_rules, response_rules) and silently ignores everything else, so these notes cost nothing at runtime. Copy this whole file and edit the real fields below to build your own template.",
+
+  "template": "protect-baseline",
+  "version": "1.3",
+  "description": "Baseline protection: switches a group to Protect mode (network + process), blocks access to common sensitive files, allows only DNS/HTTPS outbound while denying everything else, and quarantines the container automatically on a critical security event.",
+
+  "_note_covers": "These two arrays are documentation only — the script ignores them. They exist so anyone reading the template (a human, or a future version of this skill) knows exactly what this template does and doesn't touch, without having to read every field below.",
+  "covers": ["policy_mode", "profile_mode", "file_monitor_rules", "network_rules (allow DNS/HTTPS, deny-rest)", "response_rules (quarantine on critical security event)"],
+  "does_not_cover": ["dlp_waf", "admission_control", "process_profile_rules"],
+
+  "_note_modes": "policy_mode controls NETWORK behavior enforcement (which connections are allowed); profile_mode controls PROCESS behavior enforcement (which programs are allowed to run). Both need to be 'Protect' for the container to actually be protected — 'Discover' just watches and learns, 'Monitor' watches and alerts but doesn't block. Setting only one of the two leaves the other half of the container's behavior unenforced.",
+  "policy_mode": "Protect",
+  "profile_mode": "Protect",
+
+  "_note_file_monitor_rules": "Each entry blocks read/write access to one path inside the container. 'filter' is the exact path (or a glob, e.g. '/etc/*.conf'); 'recursive: true' also covers everything under that path (needed for a directory like /root/.ssh); 'behavior' is always 'block_access' for this template — NeuVector also supports a 'monitor'-only behavior (log but don't block) if you want visibility before enforcing. Re-applying this template is safe — NeuVector itself silently ignores an already-registered filter, so nothing gets duplicated here.",
+  "_note_predefined_files": "IMPORTANT (per NeuVector's own docs, https://open-docs.neuvector.com/policy/filerules/): a handful of paths — including /etc/passwd, /etc/hosts, and /etc/resolv.conf — are NeuVector's own 'predefined' sensitive files, and the engine deliberately only ALERTS on those, never blocks, even with a 'block_access' rule like the ones below. This is intentional, so routine system updates aren't accidentally blocked. Keeping /etc/passwd and /etc/hosts below still gives you useful alerting/audit-log coverage on those paths, but don't rely on them to actually stop a read — that's what /root/.ssh, /root/.bash_history, and any other genuinely custom path (not on NeuVector's predefined list) are for.",
+  "file_monitor_rules": [
+    {"filter": "/etc/passwd", "recursive": false, "behavior": "block_access"},
+    {"filter": "/etc/shadow", "recursive": false, "behavior": "block_access"},
+    {"filter": "/etc/hosts", "recursive": false, "behavior": "block_access"},
+    {"filter": "/etc/sudoers", "recursive": false, "behavior": "block_access"},
+    {"filter": "/root/.ssh", "recursive": true, "behavior": "block_access"},
+    {"filter": "/root/.bash_history", "recursive": false, "behavior": "block_access"}
+  ],
+
+  "_note_network_rules": "Rules are evaluated TOP TO BOTTOM, first match wins — this is why the two 'allow' rules come before the 'deny' rule: without them, the deny-everything rule would also block the container's own DNS lookups and HTTPS traffic. The literal string '{group}' gets replaced automatically with this container's real NeuVector group name (which is NOT simply 'nv.<your-name>' — it's 'nv.<compose-project>.<service>', resolved for you; you never need to know or type the real name yourself). 'to': 'external' means 'anything outside this device's own containers'. Re-applying this template is also safe here — the script checks what's already applied to THIS specific group before inserting, so running it twice does not create duplicate rules.",
+  "network_rules": [
+    {
+      "comment": "protect-baseline: allow DNS outbound",
+      "from": "{group}",
+      "to": "external",
+      "ports": "any",
+      "applications": ["DNS"],
+      "action": "allow"
+    },
+    {
+      "comment": "protect-baseline: allow HTTPS outbound",
+      "from": "{group}",
+      "to": "external",
+      "ports": "tcp/443",
+      "applications": [],
+      "action": "allow"
+    },
+    {
+      "comment": "protect-baseline: deny everything else outbound",
+      "from": "{group}",
+      "to": "external",
+      "ports": "any",
+      "applications": [],
+      "action": "deny"
+    }
+  ],
+
+  "_note_response_rules": "This is the automated 'take action' layer — instead of just blocking one thing, it watches for a security event about this container and quarantines the container itself if one fires. 'conditions' cannot be an empty list (NeuVector rejects that with a 'No criteria' error) — you must give it at least one thing to match on; here it's 'level: Critical', meaning only the most severe events trigger the quarantine, not every minor notice. 'disable: false' means this rule is ACTIVE the moment it's applied — set it to 'true' if you want to add the rule but not have it fire yet (e.g. while you're still tuning the rest of the policy).",
+  "response_rules": [
+    {
+      "comment": "protect-baseline: quarantine on critical security event",
+      "event": "security-event",
+      "group": "{group}",
+      "conditions": [{"type": "level", "value": "Critical"}],
+      "actions": ["quarantine"],
+      "disable": false
+    }
+  ],
+
+  "_note_usage": "Two ways to apply this template: (1) via the skill — run it directly from weda-neuvector-deploy-skill/ (python3 scripts/run_neuvector.py template --domain <domain> --tenant <tenant> --token-file /tmp/weda.jwt --device-id <deviceId> --group <your-container-group> --template-file ../protect-config-template.example.json [--deploy-if-missing]); or (2) manually, no script — see README.md's 'Apply the Security Config Template Manually' section for the equivalent raw NeuVector REST calls, one per field in this file. Either way, copy this file to your own filename first and edit the file_monitor_rules/network_rules/response_rules to match what you actually want to protect."
+}

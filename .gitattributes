@@ -1,0 +1,7 @@
+# Force LF line endings for shell scripts and config files
+# Prevents CRLF issues when files are edited via Azure DevOps web UI or Windows
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+docker-compose.yml text eol=lf
+Makefile text eol=lf

@@ -1,0 +1,152 @@
+# =============================================================================
+# NeuVector Edge — Release Validation Pipeline
+# =============================================================================
+# Validates the edge container release by pulling from Harbor, deploying via
+# docker compose (no cert-gen step — the image self-generates its own TLS
+# certs on first boot), and running a set of raw REST API checks against it.
+# =============================================================================
+trigger:
+  branches:
+    include:
+    - release/*
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  registryHost: 'harbor.edgesync.cloud'
+  imageRepository: 'neuvector-edge/allinone'
+  imageTag: 'v5.4.8.edge.v1.1.2.32309'
+
+stages:
+# =============================================================================
+# Stage 1: Pull, Deploy & Test
+# =============================================================================
+# Deploy and Test run in the same stage because Azure Pipeline stages use
+# separate agents — the container must be running for tests to execute.
+# =============================================================================
+- stage: DeployAndTest
+  displayName: 'Deploy & Validate Edge Container'
+  jobs:
+  - job: DeployAndTest
+    displayName: 'Deploy & Test NeuVector Edge'
+    steps:
+    - script: |
+        echo "$HARBOR_PASSWORD" | docker login $(registryHost) -u $(HARBOR_USERNAME) --password-stdin
+      displayName: 'Login to Harbor'
+      env:
+        HARBOR_PASSWORD: $(HARBOR_PASSWORD)
+
+    - script: |
+        set -e
+        sudo apt-get update && sudo apt-get install -y jq dos2unix
+      displayName: 'Install Dependencies'
+
+    - script: |
+        set -e
+        dos2unix ./docker-compose.yml
+      displayName: 'Fix Line Endings'
+
+    - script: |
+        set -e
+        echo "Pulling $(registryHost)/$(imageRepository):$(imageTag)"
+        docker pull $(registryHost)/$(imageRepository):$(imageTag)
+      displayName: 'Pull Edge Image from Harbor'
+
+    - script: |
+        set -e
+        sudo docker compose up -d
+        echo "Waiting 90 seconds for NeuVector initialization..."
+        sleep 90
+        sudo docker compose ps
+      displayName: 'Deploy Container'
+
+    - script: |
+        set -e
+        TOKEN=$(curl -sk -X POST https://localhost:10443/v1/auth \
+          -H "Content-Type: application/json" \
+          -d '{"password":{"username":"admin","password":"admin"}}' | jq -r '.token.token')
+        if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+          echo "FAIL: could not obtain an auth token"
+          exit 1
+        fi
+        echo "PASS: login succeeded"
+
+        SUMMARY=$(curl -sk https://localhost:10443/v1/system/summary -H "X-Auth-Token: $TOKEN")
+        echo "$SUMMARY" | jq .
+        CONTROLLERS=$(echo "$SUMMARY" | jq -r '.summary.controllers')
+        ENFORCERS=$(echo "$SUMMARY" | jq -r '.summary.enforcers')
+        if [ "$CONTROLLERS" -lt 1 ] || [ "$ENFORCERS" -lt 1 ]; then
+          echo "FAIL: expected at least 1 controller and 1 enforcer, got controllers=$CONTROLLERS enforcers=$ENFORCERS"
+          exit 1
+        fi
+        echo "PASS: controller and enforcer both reporting"
+
+        sudo docker compose exec -T nv ls /var/neuvector/certs/ca.cert /var/neuvector/certs/cert.key /var/neuvector/certs/cert.pem
+        echo "PASS: self-generated certs present"
+
+        curl -sk -X DELETE https://localhost:10443/v1/auth -H "X-Auth-Token: $TOKEN"
+      displayName: 'Run Verification Checks'
+      continueOnError: true
+
+# =============================================================================
+# Stage 2: Security Scan & SBOM
+# =============================================================================
+# Scan runs as a separate stage — it pulls the image independently from Harbor,
+# so it does not need the running container from Stage 1.
+# =============================================================================
+- stage: Scan
+  displayName: 'Security Scan & SBOM'
+  dependsOn: DeployAndTest
+  jobs:
+  - job: SecurityAnalysis
+    displayName: 'Trivy Scan & SBOM Generation'
+    steps:
+    - script: |
+        echo "$HARBOR_PASSWORD" | docker login $(registryHost) -u $(HARBOR_USERNAME) --password-stdin
+      displayName: 'Login to Harbor'
+      env:
+        HARBOR_PASSWORD: $(HARBOR_PASSWORD)
+
+    - script: |
+        set -e
+        if ! command -v trivy &> /dev/null; then
+          sudo apt-get update && sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
+            | gpg --dearmor \
+            | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" \
+            | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update && sudo apt-get install -y trivy
+        fi
+      displayName: 'Install Trivy'
+
+    - script: |
+        IMAGE="$(registryHost)/$(imageRepository):$(imageTag)"
+        echo "Scanning: $IMAGE"
+        trivy image \
+          --severity CRITICAL,HIGH \
+          --exit-code 0 \
+          --format table \
+          "$IMAGE"
+        echo "Scan complete - vulnerabilities reported above (informational only)"
+      displayName: 'Vulnerability Scan'
+      continueOnError: true
+
+    - script: |
+        set -euo pipefail
+        SBOM_DIR="$(Build.ArtifactStagingDirectory)/sbom"
+        mkdir -p "$SBOM_DIR"
+        IMAGE="$(registryHost)/$(imageRepository):$(imageTag)"
+        echo "=== Generating Edge SBOMs ==="
+        trivy image --format spdx-json  --output "$SBOM_DIR/edge-spdx.json"      "$IMAGE"
+        trivy image --format cyclonedx   --output "$SBOM_DIR/edge-cyclonedx.json"  "$IMAGE"
+      displayName: 'Generate SBOMs'
+      continueOnError: true
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish SBOM Artifacts'
+      inputs:
+        targetPath: '$(Build.ArtifactStagingDirectory)/sbom'
+        artifactName: 'SBOM'
+        artifactType: 'pipeline'
