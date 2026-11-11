@@ -17,7 +17,6 @@ tags:      [doc:test, feature:container-management, service:weda, service:dmagen
 
 Every step is a literal, reproducible command against the WEDA Core API.
 
-[[_TOC_]]
 
 ---
 
@@ -27,7 +26,7 @@ Every step is a literal, reproducible command against the WEDA Core API.
 
 | Item | Value | Notes |
 |---|---|---|
-| WEDA base URL | `https://{domain}/{tenant}/weda` | e.g. `weda-sit-k3s.weda.dev` |
+| WEDA base URL | `https://{domain}/{tenant}/weda` | e.g. `weda.example.com` |
 | API prefix | `/api/v1` | Full path = `{BASE}/api/v1/orgs/{orgId}/stack-configs` etc. |
 | Auth | `Authorization: Bearer <JWT>` | Scoped to one org, typically expires within an hour or two |
 | Client | `curl` | No direct network route to the device is required |

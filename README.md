@@ -1,18 +1,18 @@
-# NeuVector Edge
+# Advantech WEDA Container Runtime Protection
 
-This repo (`neuvector_release`) is the complete release package for NeuVector Edge: the optimized container image, its `docker-compose.yml`, and the AI-agent skills for deploying it on a WEDA-managed device — everything needed to deploy and verify NeuVector on edge and resource-constrained environments. There's no separate deploy/cert-gen/test script to run — deployment and verification are direct calls against WEDA's or NeuVector's own REST APIs, or `docker compose` directly.
+Deployment and verification tooling for running the open-source [NeuVector](https://github.com/neuvector/neuvector) container security platform on WEDA-managed edge devices: a `docker-compose.yml` for the official upstream image, a baseline security-config template, and two AI-agent skills that deploy it through WEDA and prove its security controls actually fire. There's no separate deploy/cert-gen/test script to run — deployment and verification are direct calls against WEDA's or NeuVector's own REST APIs, or `docker compose` directly.
 
-**Version:** v5.4.8.edge.v1.1.2.32309
-**Base Image:** neuvector/allinone:5.4.8
-**License:** Apache 2.0
+| | |
+|---|---|
+| **NeuVector version** | 5.4.8 |
+| **Image** | `docker.io/neuvector/allinone:5.4.8` — the unmodified upstream image published by SUSE. This repo does not build, modify or redistribute it. |
+| **License (this repo)** | MIT — see [LICENSE](LICENSE). NeuVector and its image are licensed separately — see [NOTICE.md](NOTICE.md). |
 
-[[_TOC_]]
+> NeuVector and SUSE are trademarks of SUSE LLC or its affiliates. This project is not affiliated with, sponsored by or endorsed by SUSE, and SUSE does not support it.
 
 ## Overview
 
-NeuVector Edge is a size-optimized build of the NeuVector allinone image. It retains full Web UI and REST API functionality while removing components not needed in edge deployments.
-
-### Components Included
+The upstream `allinone` image runs NeuVector's controller, enforcer and manager in a single container on Docker — no Kubernetes needed.
 
 | Component | Purpose |
 |-----------|---------|
@@ -20,21 +20,12 @@ NeuVector Edge is a size-optimized build of the NeuVector allinone image. It ret
 | Enforcer | Runtime security and network monitoring |
 | Manager (Web UI) | Browser-based management console (port 8443) |
 | REST API | Programmatic management and automation (port 10443) |
-| Path Walker | Required for file-access rule (`block_access`) enforcement in Protect mode — retained from `v1.1.0` onward, see [RELEASE_NOTES.md](RELEASE_NOTES.md) |
 
-### Components Removed
-
-| Component | Path | Reason |
-|-----------|------|--------|
-| Upgrader | `/usr/local/bin/upgrader` | Not applicable for single-node edge |
-| OPA Engine | `/usr/local/bin/opa` | Open Policy Agent not required for edge |
-| yq | `/usr/bin/yq` | YAML processor not used at runtime |
-| Documentation | `/usr/share/doc` | Reduces image size |
-| Man Pages | `/usr/share/man` | Reduces image size |
+Up to `v5.4.8.edge.v1.1.2.32309` this repo deployed an Advantech-modified, size-reduced rebuild of this image from a private registry. It now uses the upstream image as published, so the license notices, change history and branding stay those of SUSE's own build — see [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 ## Deploy
 
-No cert-gen step and no deploy script — the image generates its own TLS certificates on first boot. Pick whichever matches your situation.
+No cert-gen step and no deploy script. Pick whichever matches your situation.
 
 **Option A — via WEDA (no script, just its own API):** three raw calls create a stack config from `docker-compose.yml`, deploy it to your device, and poll until it's running.
 
@@ -87,11 +78,13 @@ Each skill's own `SKILL.md` documents every subcommand (`deploy`/`tunnel`/`check
 
 ## NeuVector Platform Reference
 
-The edge container ships the full NeuVector management plane (controller, enforcer, and manager). The tables below map each feature area to the official NeuVector documentation and note what applies to this edge deployment.
+The `allinone` image ships the full NeuVector management plane (controller, enforcer, and manager). The tables below map each feature area to the official NeuVector documentation and note what applies to this single-node Docker deployment.
+
+> The "confirmed live" results below were recorded on the earlier Advantech rebuild of the same NeuVector 5.4.8 release. Re-run `weda-neuvector-deploy-skill` against the upstream image before relying on them for sign-off.
 
 ### Included — Fully Functional
 
-These features work in the edge container. Use the documentation links as the reference for expected behavior during testing.
+These features work in this deployment. Use the documentation links as the reference for expected behavior during testing.
 
 | Feature | UI Location | What to Verify | Documentation |
 |---------|-------------|----------------|---------------|
@@ -113,13 +106,13 @@ These features work in the edge container. Use the documentation links as the re
 | REST API | Port 10443 | All API endpoints — see [Quickstart.md](Quickstart.md#key-api-endpoints) | [REST API & Automation](https://open-docs.neuvector.com/automation/automation) |
 | CIS Benchmarks / Compliance | Security Risks > Compliance | `docker_bench_status: "finished"` on `GET /v1/host`, real findings from `GET /v1/compliance/asset` — confirmed live (2026-09-30), works without the CVE scanner component (a separate feature, see below) | [Scanning & Compliance](https://open-docs.neuvector.com/scanning/scanning) |
 
-### Not Available in Edge
+### Not Available in This Deployment
 
-These features are removed or not applicable. They may appear in the UI menu but will show empty results or not function. This is expected behavior — do not file bugs for these.
+These features are not part of the `allinone` container or not applicable to single-node Docker. They may appear in the UI menu but will show empty results or not function. This is expected behavior — do not file bugs for these.
 
 | Feature | Reason | Documentation |
 |---------|--------|---------------|
-| Vulnerability Scanning (CVE database) | Scanner component removed to reduce image size — confirmed live, `scanners: 0` in `/v1/system/summary`. Does not affect CIS Benchmarks/Compliance, a separate feature — see the Included table above | [Scanning & Compliance](https://open-docs.neuvector.com/scanning/scanning) |
+| Vulnerability Scanning (CVE database) | The CVE scanner is a separate NeuVector image (`neuvector/scanner`) that this deployment does not run — `scanners: 0` in `/v1/system/summary`. Does not affect CIS Benchmarks/Compliance, a separate feature — see the Included table above | [Scanning & Compliance](https://open-docs.neuvector.com/scanning/scanning) |
 | Registry Scanning | Requires the CVE scanner component above | [Registry Scanning](https://open-docs.neuvector.com/scanning/registry) |
 | Admission Control | Kubernetes-only feature, not applicable to Docker | [Admission Controls](https://open-docs.neuvector.com/policy/admission) |
 | Multi-Cluster Federation | Single-node deployment only | [Multi-Cluster Management](https://open-docs.neuvector.com/navigation/multicluster) |
@@ -143,8 +136,8 @@ These features are removed or not applicable. They may appear in the UI menu but
 | Limitation | Description |
 |------------|-------------|
 | Single-node only | Multi-node cluster deployment not supported |
-| No CVE scanner | Vulnerability scanner (CVE database) not included — CIS Benchmarks/Compliance is a separate feature and does work, see the Included table above |
-| No upgrader | In-place upgrades not supported; redeploy with new image |
+| No CVE scanner | The separate `neuvector/scanner` container is not deployed — CIS Benchmarks/Compliance is a separate feature and does work, see the Included table above |
+| Upgrades | No in-place upgrade on Docker; change the image tag in the compose file and redeploy |
 
 ### Operational
 
@@ -153,6 +146,8 @@ These features are removed or not applicable. They may appear in the UI menu but
 | Privileged mode | Container requires privileged mode |
 | Host PID namespace | Container requires host PID namespace |
 | Root access | `docker`/`docker compose` commands typically require sudo/root access |
+| Default admin password | The image starts with `admin`/`admin` (upstream behavior; a preset first password is only supported on Kubernetes). Ports 8443/10443 are published on every host interface, so change the password immediately after the first login. |
+| Internal certificates | With nothing mounted at `/etc/neuvector/certs/internal/`, NeuVector uses its built-in default internal certificates, which are the same in every installation. The internal ports are not published to the host, but other containers on the same Docker network can reach them. For production, replace them as described in NeuVector's documentation on internal certificates. |
 | One instance per host | The container uses a fixed `hostname: nv` and `CLUSTER_JOIN_ADDR=nv` for its (single-node) cluster identity, and `pid: host` gives it visibility into every process on the machine. Running a second NeuVector container on the *same physical host* — even against a separate `/var/neuvector` path — collides on both, and the second instance's enforcer/hosts/workloads never populate (`system/summary` reports `enforcers: 0` indefinitely). Confirmed live 2026-09-28. Stop or remove any existing NeuVector container on a host before deploying another to it. |
 
 ### Compatibility
@@ -166,11 +161,11 @@ These features are removed or not applicable. They may appear in the UI menu but
 
 See [RELEASE_NOTES.md](RELEASE_NOTES.md) for version history and details.
 
-## License
+## License and Trademarks
 
-These tools are provided under the Apache 2.0 License.
+The contents of this repository are licensed under the MIT License — see [LICENSE](LICENSE).
 
-NeuVector is an open source container security platform by SUSE.
+NeuVector is an open-source container security platform by SUSE, licensed under the Apache License 2.0. This repository does not contain or redistribute it; the compose files pull the unmodified upstream image. See [NOTICE.md](NOTICE.md) for its license terms and the trademark notice.
 
 - Project: https://neuvector.com
 - Source: https://github.com/neuvector/neuvector

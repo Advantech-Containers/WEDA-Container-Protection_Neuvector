@@ -1,28 +1,25 @@
-# NeuVector Edge — Quickstart
+# WEDA Container Runtime Protection — Quickstart
 
-Get up and running with the optimized NeuVector Edge container in minutes.
+Get NeuVector running on an edge device, through WEDA or directly with Docker, in minutes.
 
 ## What This Is
 
-An optimized Docker image derived from `neuvector/allinone:5.4.8`, purpose-built for edge and resource-constrained environments.
+The official, unmodified NeuVector `allinone` image, deployed and verified with this repo's compose file and REST calls. NeuVector is open-source software by SUSE; this project is not affiliated with SUSE — see [NOTICE.md](NOTICE.md).
 
 | Property | Value |
 |----------|-------|
-| Image | `harbor.edgesync.cloud/neuvector-edge/allinone:v5.4.8.edge.v1.1.2.32309` |
-| Base Image | `neuvector/allinone:5.4.8` |
-| Size Savings | ~200 MB smaller |
+| Image | `docker.io/neuvector/allinone:5.4.8` (upstream, unmodified) |
+| Image size | ~1.1 GB unpacked, ~430 MB download (amd64 and arm64) |
 | Web UI | Yes (port 8443) |
 | REST API | Yes (port 10443) |
 
-Runs as a single all-in-one container (controller + enforcer + manager) on Docker. No Kubernetes needed. TLS certificates are generated automatically on first boot — there's no separate cert-generation step, and no deploy/test scripts to run.
+Runs as a single all-in-one container (controller + enforcer + manager) on Docker. No Kubernetes needed. The Web UI and REST API use NeuVector's own self-signed certificates — there's no separate cert-generation step, and no deploy/test scripts to run.
 
 This guide has three parts:
 
 1. **[NeuVector Deployment](#1-neuvector-deployment)** — get the container running and confirm it via API.
 2. **[Access NeuVector via UI](#2-access-neuvector-via-ui)** — the everyday way to use it: tunnel in, log in, look around, apply a policy.
 3. **[Access NeuVector via API](#3-access-neuvector-via-api-optional)** *(optional)* — the same things as raw REST calls, for scripting or automation.
-
-[[_TOC_]]
 
 ## Prerequisites
 
@@ -56,9 +53,8 @@ sudo systemctl enable docker
 ### Clone the Repository
 
 ```bash
-git clone https://Advantech-EBO@dev.azure.com/Advantech-EBO/Container%20Design/_git/neuvector_release neuvector-edge
-cd neuvector-edge
-git checkout feature/v5.4.8.edge.v1.1.1   # not yet merged into develop — needed until it is
+git clone git@github.com:Advantech-Containers/Advantech-WEDA-Container-Runtime-Protection.git
+cd Advantech-WEDA-Container-Runtime-Protection
 ```
 
 Nothing to `chmod` — there are no scripts to run.
@@ -83,7 +79,7 @@ BASE="https://${DOMAIN}/${TENANT}/weda"
 COMPOSE_B64=$(base64 -w0 docker-compose.yml)
 curl -sk -X POST "${BASE}/api/v1/orgs/${ORG_ID}/stack-configs" \
   -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" \
-  -d "{\"stackName\":\"neuvector-edge\",\"type\":\"compose\",\"composeFileContent\":\"${COMPOSE_B64}\"}"
+  -d "{\"stackName\":\"neuvector\",\"type\":\"compose\",\"composeFileContent\":\"${COMPOSE_B64}\"}"
 # -> note stackConfigId and stackRevisionId from the response
 ```
 
@@ -93,7 +89,7 @@ curl -sk -X POST "${BASE}/api/v1/orgs/${ORG_ID}/stack-configs" \
 {
   "stackConfigId": "b85bbe2b-...",
   "stackRevisionId": "0cbdaa2a-...",
-  "stackName": "neuvector-edge",
+  "stackName": "neuvector",
   ...
 }
 ```
@@ -119,7 +115,7 @@ curl -sk -X POST "${BASE}/api/v1/orgs/${ORG_ID}/stack-configs/<stackConfigId>/re
     {
       "stackConfigId": "b85bbe2b-...",
       "stackRevisionId": "0cbdaa2a-...",
-      "stackName": "neuvector-edge",
+      "stackName": "neuvector",
       "deviceId": "<your-device-id>",
       "status": "deploying",
       "containers": []
@@ -145,10 +141,10 @@ by `stackConfigId` and watch `status`:
   "items": [
     {
       "stackConfigId": "b85bbe2b-...",
-      "stackName": "neuvector-edge",
+      "stackName": "neuvector",
       "status": "running",
       "containers": [
-        {"name": "edge_neuvector-edge-nv-1", "state": "running", "error": null}
+        {"name": "edge_neuvector-nv-1", "state": "running", "error": null}
       ],
       "error": {}
     }
@@ -166,10 +162,10 @@ docker compose up -d
 ```
 
 **What happens:**
-1. The edge image is pulled from the registry (if not already local).
+1. The upstream image is pulled from Docker Hub (if not already local).
 2. Any existing NeuVector container with the same name is replaced.
-3. A new container starts, generates its own TLS certs on this first boot, and persists them
-under `/var/neuvector` (survives every future redeploy).
+3. A new container starts, serving the Web UI and REST API with NeuVector's self-signed
+certificates, and keeps its data under `/var/neuvector` (survives every future redeploy).
 
 **Verify the container is running:**
 
@@ -213,7 +209,7 @@ curl -sk -H "Authorization: Bearer ${TOKEN}" \
 ```json
 {
   "sessionStatus": "ESTABLISHED",
-  "tunnelEndpoint": "172.17.20.204:11112"
+  "tunnelEndpoint": "203.0.113.10:11112"
 }
 ```
 
@@ -221,7 +217,7 @@ curl -sk -H "Authorization: Bearer ${TOKEN}" \
 
 ### Access NeuVector Web Service via Tunnel
 
-Open a browser to `https://<tunnelEndpoint>` (e.g. `https://172.17.20.204:11112` from the example above — or `https://<device-ip>:8443` if you deployed directly, no tunnel needed).
+Open a browser to `https://<tunnelEndpoint>` (e.g. `https://203.0.113.10:11112` from the example above — or `https://<device-ip>:8443` if you deployed directly, no tunnel needed).
 
 #### 1. Login
 
@@ -232,7 +228,7 @@ Accept the self-signed certificate warning, then log in with the **default crede
 | Username | `admin` |
 | Password | `admin` |
 
-The **Login** button stays disabled until you check **"I have read and agree to the End User License Agreement"** below the password field — a real first-run gotcha, not something you did wrong if it looks unresponsive at first:
+The **Login** button stays disabled until you check **"I have read and agree to the End User License Agreement"** below the password field — a real first-run gotcha, not something you did wrong if it looks unresponsive at first. That agreement is NeuVector's own, between you and its publisher; read it before you accept it:
 
 ![NeuVector login screen](docs/images/web-ui-login.png)
 
@@ -472,8 +468,8 @@ See [`weda-neuvector-deploy-skill/REFERENCE.md`](weda-neuvector-deploy-skill/REF
 | `/v1/log/threat` | GET | Threat logs |
 | `/v1/log/violation` | GET | Violation logs |
 | `/v1/log/incident` | GET | Incident logs — real enforcement/violation events, e.g. `Container.FileAccess.Violation` |
-| `/v1/compliance/asset` | GET | CIS Benchmark / compliance findings — confirmed working on this edge image (see README.md's platform reference) |
-| `/v1/scan/scanner` | GET | Scanner status — reports `scanners: 0` on this edge image (CVE scanner removed, see RELEASE_NOTES.md) |
+| `/v1/compliance/asset` | GET | CIS Benchmark / compliance findings — confirmed working on NeuVector 5.4.8 (see README.md's platform reference) |
+| `/v1/scan/scanner` | GET | Scanner status — reports `scanners: 0` (the separate `neuvector/scanner` container is not deployed) |
 
 ---
 
@@ -535,11 +531,11 @@ The `tar` backup above covers everything under `/var/neuvector`. NeuVector also 
 # Stop the container
 sudo docker compose down
 
-# Remove persistent data (this also removes the self-generated TLS certs)
+# Remove persistent data
 sudo rm -rf /var/neuvector /var/neuvector.backup
 
 # Remove the image
-sudo docker rmi harbor.edgesync.cloud/neuvector-edge/allinone:v5.4.8.edge.v1.1.2.32309
+sudo docker rmi docker.io/neuvector/allinone:5.4.8
 ```
 
 If deployed via WEDA, also remove the stack from the device:
@@ -554,14 +550,15 @@ curl -sk -X DELETE "${BASE}/api/v1/devices/${DEVICE_ID}/docker/stacks?stackConfi
 ## File Layout
 
 ```
-neuvector-edge/
+Advantech-WEDA-Container-Runtime-Protection/
 ├── docker-compose.yml     # Container deployment config
 ├── protect-config-template.example.json  # Baseline security config (see above)
 ├── README.md              # Full documentation
 ├── Quickstart.md          # This file
 ├── NeuVector-User-Guide.md # Manual vs AI-skill install decision guide
 ├── RELEASE_NOTES.md       # Version history and release details
-├── LICENSE.md             # Apache 2.0
+├── LICENSE              # MIT (this repo's own content)
+├── NOTICE.md              # NeuVector licensing and trademark notice
 ├── weda-deploy-skill/     # AI-agent skill: generic WEDA compose deploy + verify
 └── weda-neuvector-deploy-skill/  # AI-agent skill: NeuVector-specific deploy + configure + verify
 ```
@@ -574,7 +571,6 @@ neuvector-edge/
 
 ```bash
 sudo docker compose logs                                      # Check container logs
-sudo docker compose exec nv ls -la /var/neuvector/certs/       # Verify self-generated certs exist
 sudo docker images                                             # Verify the image exists
 ```
 
@@ -603,10 +599,10 @@ A `200` with a `token.token` field means credentials are correct; a `401` means 
 
 ### "Image not found" on deploy
 
-Verify you can reach the Harbor registry:
+Verify the device can reach Docker Hub:
 
 ```bash
-docker pull harbor.edgesync.cloud/neuvector-edge/allinone:v5.4.8.edge.v1.1.2.32309
+docker pull docker.io/neuvector/allinone:5.4.8
 ```
 
 ### WEDA deploy stuck in "deploying" or "pending"
