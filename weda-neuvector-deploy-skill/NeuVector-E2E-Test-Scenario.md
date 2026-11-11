@@ -1,7 +1,7 @@
 ---
 doc-id:    E2E-NEUVECTOR-EDGE-001
 title:     "NeuVector Security Configuration & Verification — End-to-End Test Scenario"
-product:   "NeuVector-Edge-Integration"
+product:   "WEDA-Container-Runtime-Protection"
 version:   v2.7-20260924
 status:    Draft
 date:      2026-09-10
@@ -18,7 +18,6 @@ tags:      [doc:test, feature:container-security, service:neuvector, layer:cloud
 
 Every step is a literal, reproducible command against the NeuVector REST API.
 
-[[_TOC_]]
 
 ---
 

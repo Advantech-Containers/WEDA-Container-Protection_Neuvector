@@ -122,7 +122,7 @@ returns a generic `400 Request in wrong format` regardless of content — it loo
 Rule `id` also has real range constraints: **1–10000** for ordinary rules, **100000–110000** is reserved for federated rules and will be rejected with a specific "ID is reserved for federal rule" error for a non-federal `cfg_type`.
 
 4. **`pathWalker` must actually be present in the deployed image for file-monitor enforcement to
-do anything.** On a minimized/stripped edge image missing this component, a `file_monitor` filter registers successfully (`200`, visible via `GET`), `policy_mode`/`profile_mode` both show `Protect`, and the container can be freshly restarted — and reads/writes to the filtered path still succeed with zero enforcement and zero incident log entry. This is not fixable via any API call; it needs the image itself to include the component. If E2E-3.4 fails with a silently-succeeding read/write despite correct config, check the image for this before assuming an API/config mistake.
+do anything.** On a size-reduced image missing this component (the upstream image includes it), a `file_monitor` filter registers successfully (`200`, visible via `GET`), `policy_mode`/`profile_mode` both show `Protect`, and the container can be freshly restarted — and reads/writes to the filtered path still succeed with zero enforcement and zero incident log entry. This is not fixable via any API call; it needs the image itself to include the component. If E2E-3.4 fails with a silently-succeeding read/write despite correct config, check the image for this before assuming an API/config mistake.
 
    **If `pathWalker` is present and config is confirmed correct (E2E-3.3b passes) and E2E-3.4 still
    fails this way, it's likely not an image or config problem at all.** Confirmed live
@@ -139,7 +139,7 @@ do anything.** On a minimized/stripped edge image missing this component, a `fil
    debugging the deployment itself.
 
 5. **Alert forwarding (`syslog_cfg`) is not part of this E2E** as of the current document version
-— confirmed broken in the edge image tested against (config accepts and reports enabled, destination is verified reachable, but no syslog message is ever actually emitted for a real event). Removed from the document's Section 4/5 rather than tested here; re-add both the doc step and this skill's coverage once the underlying delivery mechanism is fixed.
+— confirmed broken in the earlier size-reduced rebuild tested against, not yet re-tested on the upstream image (config accepts and reports enabled, destination is verified reachable, but no syslog message is ever actually emitted for a real event). Removed from the document's Section 4/5 rather than tested here; re-add both the doc step and this skill's coverage once the underlying delivery mechanism is fixed.
 
 6. **The real syslog field names, if this is ever re-added**, are flat under `config` —
 `syslog_ip`, `syslog_port`, `syslog_level` (title-case values like `"Info"`, not `"INFO"`), `syslog_status` (boolean) — not a nested `syslog_cfg` object.

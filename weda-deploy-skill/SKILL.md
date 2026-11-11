@@ -24,7 +24,7 @@ A container-specific skill that picks up from here should reference this skill *
 
 | Need | Notes |
 |---|---|
-| WEDA domain | e.g. `weda-sit-k3s.weda.dev` — no scheme, no trailing slash |
+| WEDA domain | e.g. `weda.example.com` — no scheme, no trailing slash |
 | Tenant | e.g. `central` |
 | A JWT, or `WEDA_LOGIN`+`WEDA_PASSWORD` exported | Either point `--token-file` at an existing valid token, or export both env vars and let the script mint one automatically |
 | deviceId | Target device, already `Activated` |

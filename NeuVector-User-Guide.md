@@ -1,14 +1,14 @@
 ---
 doc-id:    GUIDE-NEUVECTOR-EDGE-001
-title:     "NeuVector Edge — User Guide: Manual Install and AI-Skill-Driven Install"
-product:   "NeuVector-Edge-Integration"
-version:   1.0
+title:     "WEDA Container Runtime Protection — NeuVector User Guide: Manual Install and AI-Skill-Driven Install"
+product:   "WEDA-Container-Runtime-Protection"
+version:   1.1
 status:    Completed
-date:      2026-09-22
+date:      2026-11-11
 tags:      [doc:guide, feature:container-security, service:neuvector, layer:edge, status:completed]
 ---
 
-# NeuVector Edge — User Guide
+# WEDA Container Runtime Protection — NeuVector User Guide
 
 Two ways to get NeuVector running and verified on a device. Pick one:
 
@@ -18,9 +18,7 @@ Two ways to get NeuVector running and verified on a device. Pick one:
 | **What it needs** | This repo, Docker | This repo's two bundled E2E skills, a WEDA account |
 | **What you get** | NeuVector running locally, reachable at `https://<host>:8443` | NeuVector deployed to a remote WEDA device, verified end-to-end, with a pass/fail report |
 
-Both paths deploy the same image: `harbor.edgesync.cloud/neuvector-edge/allinone:v5.4.8.edge.v1.1.2.32309`. Both the manual scripts and the AI skills now live in this single repo — nothing else to clone.
-
-[[_TOC_]]
+Both paths deploy the same image: the unmodified upstream `docker.io/neuvector/allinone:5.4.8`. NeuVector is open-source software by SUSE; this project is not affiliated with SUSE — see [NOTICE.md](NOTICE.md). Both the manual scripts and the AI skills now live in this single repo — nothing else to clone.
 
 ---
 
@@ -46,12 +44,11 @@ sudo systemctl enable --now docker
 ### A.2 Get the repo
 
 ```bash
-git clone https://Advantech-EBO@dev.azure.com/Advantech-EBO/Container%20Design/_git/neuvector_release
-cd neuvector_release
-git checkout feature/v5.4.8.edge.v1.1.1   # not yet merged into develop — needed until it is
+git clone git@github.com:Advantech-Containers/Advantech-WEDA-Container-Runtime-Protection.git
+cd Advantech-WEDA-Container-Runtime-Protection
 ```
 
-No scripts to `chmod` — there's no cert-gen or deploy step to run yourself. The image generates its own TLS certs on first boot.
+No scripts to `chmod` — there's no cert-gen or deploy step to run yourself. The Web UI and REST API use NeuVector's own self-signed certificates.
 
 ### A.3 Deploy
 
@@ -59,7 +56,7 @@ No scripts to `chmod` — there's no cert-gen or deploy step to run yourself. Th
 docker compose up -d
 ```
 
-This pulls `neuvector-edge/allinone:v5.4.8.edge.v1.1.2.32309` from Harbor if it isn't already local, stops any previous NeuVector container of the same name, and starts a fresh one. Allow ~90 seconds after it starts for the controller/enforcer to finish initializing before logging in.
+This pulls `neuvector/allinone:5.4.8` from Docker Hub if it isn't already local, stops any previous NeuVector container of the same name, and starts a fresh one. Allow ~90 seconds after it starts for the controller/enforcer to finish initializing before logging in.
 
 **Verify it's healthy:**
 
@@ -73,7 +70,7 @@ curl -sk https://localhost:10443/v1/system/summary -H "X-Auth-Token: $TOKEN" | j
 A healthy response reports `"controllers": 1`, `"enforcers": 1`, `"hosts": 1` (allow ~30-45s after first boot for these to populate). See [Quickstart.md](Quickstart.md#step-5--verify-the-deployment) for the full verification walkthrough and [Troubleshooting](Quickstart.md#troubleshooting) if something looks wrong.
 
 > **No shell access to the device, but you do have WEDA access?** You don't need an AI agent for
-> that either — see [README.md's "Deploy via WEDA"](README.md#option-a--deploy-via-weda-no-script-just-its-own-api)
+> that either — see [Quickstart.md's "Create Stack"](Quickstart.md#create-stack)
 > for the same deployment done as three raw calls against WEDA's own API instead of `docker compose`.
 
 ### A.4 Log in and configure
@@ -109,7 +106,7 @@ Point your agent (any tool that reads a `SKILL.md`) at these two directories, or
 
 | Need | Notes |
 |---|---|
-| WEDA domain + tenant | e.g. `weda-sit-k3s.weda.dev` / `central` |
+| WEDA domain + tenant | e.g. `weda.example.com` / `<tenant>` |
 | A WEDA account | Exported as `WEDA_LOGIN` / `WEDA_PASSWORD` in the shell — the skill mints its own session token automatically; it never needs a separate login step or tool |
 | `--token-file` | Required by every command below — a path to store the session token at (e.g. `/tmp/weda.jwt`). It doesn't need to exist yet; it's created/refreshed automatically |
 | `deviceId` | The target device, already `Activated` on WEDA |
@@ -124,7 +121,7 @@ export WEDA_PASSWORD='<password>'    # exported in your shell, never passed as a
 
 ```bash
 python3 weda-neuvector-deploy-skill/scripts/run_neuvector.py \
-  --domain weda-sit-k3s.weda.dev --tenant central \
+  --domain <weda-domain> --tenant <tenant> \
   --token-file /tmp/weda.jwt \
   --device-id <deviceId> \
   --group <test-container-group>
@@ -133,7 +130,7 @@ python3 weda-neuvector-deploy-skill/scripts/run_neuvector.py \
 `--token-file` always takes a path (e.g. `/tmp/weda.jwt`) — it doesn't need to exist yet. If it's missing or expired, the script mints a fresh token there automatically using `WEDA_LOGIN`/`WEDA_PASSWORD`.
 
 This single command:
-1. Checks whether NeuVector is already running on the device; if not, deploys it from the skill's own bundled compose file (same image as the manual path, `v1.1.1`).
+1. Checks whether NeuVector is already running on the device; if not, deploys it from the skill's own bundled compose file (same image as the manual path, `neuvector/allinone:5.4.8`).
 2. Opens its own tunnel to the device — no separate deploy or login step needed first.
 3. Logs into NeuVector and configures Protect mode, a file-access rule, and a config backup.
 4. Actually tries to trigger each control (runs an unrecognized process, tries to read a protected file) and confirms the block happened live — not just that the setting saved.
@@ -145,7 +142,7 @@ If no container matching `--group` is already running locally, the command above
 
 ```bash
 python3 weda-deploy-skill/scripts/run_deploy.py \
-  --domain weda-sit-k3s.weda.dev --tenant central \
+  --domain <weda-domain> --tenant <tenant> \
   --token-file /tmp/weda.jwt \
   --device-id <deviceId> \
   --compose-file <any-test-compose.yml> \
