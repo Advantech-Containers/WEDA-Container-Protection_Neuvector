@@ -164,8 +164,10 @@ docker compose up -d
 **What happens:**
 1. The upstream image is pulled from Docker Hub (if not already local).
 2. Any existing NeuVector container with the same name is replaced.
-3. A new container starts, serving the Web UI and REST API with NeuVector's self-signed
-certificates, and keeps its data under `/var/neuvector` (survives every future redeploy).
+3. A new container starts. On first boot it generates the internal controller–enforcer
+certificates into `/var/neuvector/certs/internal` (the upstream image ships none), then serves
+the Web UI and REST API with NeuVector's self-signed certificates. It keeps its data, including
+those certificates, under `/var/neuvector` (survives every future redeploy).
 
 **Verify the container is running:**
 

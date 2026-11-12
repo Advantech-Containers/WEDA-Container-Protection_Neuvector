@@ -4,6 +4,54 @@ services:
     hostname: nv
     pid: host
     privileged: true
+    # The upstream 5.4.x image ships no internal (controller <-> enforcer) certificates,
+    # so without them the controller and enforcer crash-loop on a missing
+    # /etc/neuvector/certs/internal/ca.cert and the Web UI login never succeeds.
+    # On first boot this generates a per-installation CA + certificate under
+    # /var/neuvector/certs/internal (persisted on the host), links it to the path
+    # NeuVector reads, then starts the image's own entrypoint unchanged.
+    # Certificates you mount yourself at /etc/neuvector/certs/internal/ are used as-is.
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        etc_dir=/etc/neuvector/certs/internal
+        dir=/var/neuvector/certs/internal
+        if [ -L "$$etc_dir" ] && [ "$$(readlink "$$etc_dir")" = "$$dir" ] && [ -s "$$dir/ca.cert" ] && [ -s "$$dir/cert.pem" ] && [ -s "$$dir/cert.key" ]; then
+          echo "nv-internal-certs: reusing internal certificates in $$dir"
+        elif [ ! -L "$$etc_dir" ] && [ -s "$$etc_dir/ca.cert" ] && [ -s "$$etc_dir/cert.pem" ] && [ -s "$$etc_dir/cert.key" ]; then
+          echo "nv-internal-certs: using certificates mounted at $$etc_dir"
+        else
+          if [ ! -s "$$dir/ca.cert" ] || [ ! -s "$$dir/cert.pem" ] || [ ! -s "$$dir/cert.key" ]; then
+            echo "nv-internal-certs: generating internal certificates in $$dir"
+            (
+            umask 077
+            mkdir -p "$$dir"
+            tmp=$$(mktemp -d)
+            printf '%s\n' '[req]' 'distinguished_name = dn' '[dn]' '[v3_req]' \
+              'basicConstraints = CA:FALSE' \
+              'keyUsage = digitalSignature, keyEncipherment' \
+              'extendedKeyUsage = serverAuth, clientAuth' \
+              'subjectAltName = DNS:NeuVector, DNS:nv, DNS:localhost, IP:127.0.0.1' > "$$tmp/openssl.cnf"
+            openssl genrsa -out "$$tmp/ca.key" 2048
+            openssl req -x509 -sha256 -new -nodes -key "$$tmp/ca.key" -days 3650 -subj /CN=NeuVector-Internal-CA -out "$$tmp/ca.cert"
+            openssl genrsa -out "$$tmp/cert.key" 2048
+            openssl req -new -sha256 -key "$$tmp/cert.key" -subj /CN=NeuVector -config "$$tmp/openssl.cnf" -out "$$tmp/cert.csr"
+            openssl x509 -req -sha256 -in "$$tmp/cert.csr" -CA "$$tmp/ca.cert" -CAkey "$$tmp/ca.key" -CAcreateserial -days 3650 -extfile "$$tmp/openssl.cnf" -extensions v3_req -out "$$tmp/cert.pem"
+            openssl verify -CAfile "$$tmp/ca.cert" "$$tmp/cert.pem"
+            chmod 644 "$$tmp/ca.cert" "$$tmp/cert.pem"
+            chmod 600 "$$tmp/ca.key" "$$tmp/cert.key"
+            mv "$$tmp/ca.key" "$$tmp/ca.cert" "$$tmp/cert.key" "$$tmp/cert.pem" "$$dir/"
+            rm -rf "$$tmp"
+            )
+          else
+            echo "nv-internal-certs: reusing internal certificates in $$dir"
+          fi
+          mkdir -p "$${etc_dir%/*}"
+          rm -rf "$$etc_dir"
+          ln -s "$$dir" "$$etc_dir"
+        fi
+        exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
     environment:
       - CLUSTER_JOIN_ADDR=nv
       - CUSTOM_CHECK_CONTROL=strict
